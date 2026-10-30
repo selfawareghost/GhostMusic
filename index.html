@@ -208,6 +208,42 @@ body.staged main{padding-bottom:240px}
 #keyMsg.ok{color:#8fd19e}#keyMsg.bad{color:var(--rose)}
 .check{display:flex;gap:10px;align-items:center;font-weight:500!important;color:var(--mist)}
 
+/* ---------- Now-playing screen ---------- */
+#np{position:fixed;inset:0;z-index:25;background:var(--ink);overflow-y:auto;overscroll-behavior:contain;transform:translateY(100%);transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+#np.open{transform:none}
+.np-bg{position:fixed;inset:-15%;background:var(--ink) center/cover no-repeat;filter:blur(70px) saturate(1.3) brightness(.55);opacity:.85;pointer-events:none}
+.np-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,11,14,.25),rgba(11,11,14,.85) 70%,var(--ink))}
+.np-inner{position:relative;max-width:440px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;gap:22px;
+  padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 24px);
+  padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+.np-top{display:flex;justify-content:space-between;align-items:center;height:44px}
+.np-top .icon-btn{color:var(--fog);width:44px;height:44px}
+.np-art{width:100%;max-width:100%;aspect-ratio:1;border-radius:14px;background:var(--ink-3) center/cover no-repeat;box-shadow:0 30px 60px rgba(0,0,0,.55);transform:scale(.88);transition:transform .45s cubic-bezier(.2,.8,.2,1)}
+#np.is-playing .np-art{transform:scale(1)}
+.np-meta{display:flex;align-items:center;gap:12px}
+.np-meta .meta{flex:1;min-width:0}
+.np-t{font-family:var(--display);font-weight:700;font-size:24px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-a{color:color-mix(in srgb,var(--fog) 70%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.np-g{margin-top:6px;color:var(--lantern)}
+.np-star{width:46px;height:46px;color:color-mix(in srgb,var(--fog) 60%,transparent)}
+.np-bar{font-size:12px}
+.np-ctrl{display:flex;justify-content:space-between;align-items:center}
+.np-ctrl .icon-btn{color:var(--fog)}
+.np-skip{width:56px;height:56px}
+.np-play{width:74px;height:74px;border-radius:50%;background:var(--fog);color:var(--ink);display:grid;place-items:center;transition:transform .15s}
+.np-play:active{transform:scale(.94)}
+.np-next{display:grid;gap:6px;margin-top:auto}
+.np-next .label{margin:0 0 4px}
+.np-up{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:center;text-align:left;padding:6px;border-radius:10px}
+.np-up:hover{background:rgba(255,255,255,.06)}
+.np-up .art{width:40px;height:40px;border-radius:6px}
+.np-up .meta{display:grid}
+/* Full-songs mode: YouTube's player takes the cover's place (it must stay visible) */
+body.np-video .np-art{display:none}
+body.np-video .np-art-wrap{height:236px}
+body.np-open.np-video #stage{z-index:26;top:calc(env(safe-area-inset-top,0px) + 78px);bottom:auto;left:50%;right:auto;transform:translateX(-50%);width:min(392px,calc(100% - 48px))}
+body.np-open.np-video #stage .stage-bar .label{display:none}
+
 /* ---------- Install hint (iPhone Safari only) ---------- */
 #install{position:fixed;z-index:35;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(var(--dock) + env(safe-area-inset-bottom,0px) + 14px);background:var(--fog);color:var(--ink);border-radius:14px;padding:14px 16px;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;box-shadow:0 18px 40px rgba(0,0,0,.5)}
 #install img{width:44px;height:44px;border-radius:10px}
@@ -302,6 +338,32 @@ body.staged main{padding-bottom:240px}
   </div>
 </footer>
 
+<!-- ================= NOW PLAYING ================= -->
+<section id="np" hidden aria-label="Now playing">
+  <div class="np-bg" id="npBg" aria-hidden="true"></div>
+  <div class="np-inner">
+    <div class="np-top">
+      <button class="icon-btn" id="npClose" aria-label="Close player"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg></button>
+      <span class="label">Now playing</span>
+      <button class="icon-btn" id="npSim" aria-label="10 similar songs" title="10 similar songs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/></svg></button>
+    </div>
+    <div class="np-art-wrap"><div class="np-art" id="npArt"></div></div>
+    <div class="np-meta">
+      <div class="meta"><div class="np-t" id="npT"></div><div class="np-a" id="npA"></div><div class="np-g label" id="npGenre"></div></div>
+      <button class="icon-btn star np-star" id="npStar" aria-label="Star" aria-pressed="false"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="currentColor"/></svg></button>
+    </div>
+    <div class="bar np-bar"><span class="mono" id="npCur">0:00</span><input type="range" id="npSeek" min="0" max="1000" value="0" aria-label="Seek"><span class="mono" id="npTot">0:30</span></div>
+    <div class="np-ctrl">
+      <button class="icon-btn" id="npShuffle" aria-label="Shuffle queue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+      <button class="icon-btn np-skip" id="npPrev" aria-label="Previous"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="np-play" id="npPlay" aria-label="Play"><svg id="npPlayIco" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l14 8-14 8z"/></svg></button>
+      <button class="icon-btn np-skip" id="npNextBtn" aria-label="Next"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+      <span style="width:40px"></span>
+    </div>
+    <div class="np-next" id="npNext"></div>
+  </div>
+</section>
+
 <!-- ================= FULL-SONG STAGE ================= -->
 <section id="stage" hidden aria-label="Now playing video">
   <div id="ytFrame"></div>
@@ -312,8 +374,13 @@ body.staged main{padding-bottom:240px}
 <!-- ================= SETTINGS ================= -->
 <div id="settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <div class="mbox">
-    <h3 id="setTitle">Full songs on Ghost</h3>
-    <p>Ghost plays complete songs right here through YouTube's official player. To find each song it needs a free YouTube key from Google. You set this up once; it takes about 5 minutes.</p>
+    <h3 id="setTitle">Sound</h3>
+    <fieldset style="border:0;padding:0;margin:0;display:grid;gap:10px">
+      <legend class="label" style="margin-bottom:8px">How Ghost plays songs</legend>
+      <label class="check"><input type="radio" name="source" value="audio" id="srcAudio"> <span><b style="color:var(--fog)">Audio only</b> · 30-second previews, no video</span></label>
+      <label class="check"><input type="radio" name="source" value="youtube" id="srcYt"> <span><b style="color:var(--fog)">Full songs</b> · through YouTube, its video shows inside the player</span></label>
+    </fieldset>
+    <p>For full songs, Ghost needs a free YouTube key from Google. You set this up once; it takes about 5 minutes.</p>
     <ol>
       <li>Open <b>console.cloud.google.com</b>, sign in with Google, and create a new project named <code>Ghost</code>.</li>
       <li>Go to <b>APIs &amp; Services → Library</b>, search <code>YouTube Data API v3</code>, and click <b>Enable</b>.</li>
@@ -325,7 +392,6 @@ body.staged main{padding-bottom:240px}
     <input id="ytKey" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false">
     <div class="btn-row"><button class="btn primary" id="saveKey">Save &amp; test</button><button class="btn" id="closeSet">Close</button></div>
     <p id="keyMsg" role="status"></p>
-    <label class="check"><input type="checkbox" id="prevOnly"> Play 30-second previews only</label>
     <p class="note" style="margin:0">The key is saved only in this browser, never inside the site file, so visitors to your site can't see it. The free allowance finds about 100 new songs a day; songs you've played before don't count again.</p>
   </div>
 </div>
@@ -450,6 +516,7 @@ async function toggleStar(id){
 function refreshStars(){
   document.querySelectorAll("[data-star]").forEach(b=>b.setAttribute("aria-pressed",!!S.stars[b.dataset.star]));
   const cur=Q.list[Q.i];$("#nowStar").setAttribute("aria-pressed",!!(cur&&S.stars[cur.id]));
+  if(cur){$("#npStar").setAttribute("aria-pressed",!!S.stars[cur.id]);$("#npGenre").textContent=S.stars[cur.id]?"In "+roomOf(S.stars[cur.id]):(cur.genre||"")}
   $("#navCount").textContent=Object.keys(S.stars).length||"";
   if(view==="library")render();
 }
@@ -485,7 +552,7 @@ function render(){
   if(view==="search"){
     if(!lastQuery){
       const stars=Object.values(S.stars).sort((a,b)=>b.addedAt-a.addedAt).slice(0,6);
-      M.innerHTML=`${hasFull()||S.prevOnly?"":`<div class="banner"><p><b>Full songs are off.</b> <span style="color:var(--mist)">Right now Ghost plays 30-second previews. A one-time 5-minute setup turns on full songs here.</span></p><button class="btn primary" data-act="settings">Turn on full songs</button></div>`}
+      M.innerHTML=`
         <div class="sec-head"><div><h2>What are you hearing tonight?</h2><p class="sub">Every song on Apple's catalogue is searchable. Star one and it files itself into its genre.</p></div></div>
         <div class="chips">${SUGGEST.map(s=>`<button class="chip" data-q="${esc(s)}">${esc(s)}</button>`).join("")}</div>
         ${stars.length?`<div style="margin-top:34px"><div class="sec-head"><div><p class="label">Lately starred</p></div></div>${listHTML(stars,"home")}</div>`:""}
@@ -550,7 +617,8 @@ $("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();cl
 
 /* ============ full songs via YouTube ============ */
 S.yt=S.yt||{};
-const hasFull=()=>!S.prevOnly&&!!S.ytKey;
+S.source=S.source||"audio"; // "audio" = audio only (previews), "youtube" = full songs with YouTube's video
+const hasFull=()=>S.source==="youtube"&&!!S.ytKey;
 let yt=null,ytReady=false,ytPending=null,cands=[],candI=0,mode="preview",loadSeq=0;
 function loadYtApi(){
   if(window.YT&&window.YT.Player||document.getElementById("ytApi"))return;
@@ -596,7 +664,12 @@ function tryNextCandidate(){
 }
 function playPreview(t){mode="preview";showStage(false);if(!t.preview){next();return}A.src=t.preview;A.volume=S.vol;A.play().catch(()=>{})}
 function showStage(on){$("#stage").hidden=!on;document.body.classList.toggle("staged",on);if(!on){$("#fixForm").hidden=true;if(ytReady)try{yt.stopVideo()}catch(e){}}}
-function setPlaying(on){$("#playIco").innerHTML=on?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4l14 8-14 8z"/>';$("#playBtn").setAttribute("aria-label",on?"Pause":"Play")}
+function setPlaying(on){
+  const ico=on?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4l14 8-14 8z"/>';
+  $("#playIco").innerHTML=ico;$("#npPlayIco").innerHTML=ico;
+  $("#playBtn").setAttribute("aria-label",on?"Pause":"Play");$("#npPlay").setAttribute("aria-label",on?"Pause":"Play");
+  $("#np").classList.toggle("is-playing",on);
+}
 let warnedNoKey=false;
 
 /* ============ player ============ */
@@ -608,17 +681,19 @@ async function load(){
   const my=++loadSeq;
   A.pause();if(ytReady&&mode==="yt")try{yt.pauseVideo()}catch(e){}
   let ids=[];
-  if(hasFull()||S.yt[t.id]){
+  paintNP(t);openNP();
+  if(hasFull()){
     try{ids=await videosFor(t)}
     catch(e){
       if(e.message==="quota")toast("Today's free YouTube searches are used up — playing preview");
       else if(e.message==="badkey")toast("YouTube key isn't working — check it in ⚙ settings");
       else toast("Couldn't reach YouTube — playing preview");
     }
-  }else if(!S.prevOnly&&!warnedNoKey){warnedNoKey=true;toast("Playing preview · tap ⚙ to turn on full songs")}
+  }
   if(my!==loadSeq)return;
   cands=ids;candI=0;
   if(ids.length){S.yt[t.id]=ids[0];save();playVideo(ids[0])}else playPreview(t);
+  document.body.classList.toggle("np-video",mode==="yt");
   $("#nowArt").style.backgroundImage=`url('${t.art}')`;
   $("#nowT").textContent=t.title;$("#nowA").textContent=t.artist;
   $("#nowStar").hidden=false;$("#nowStar").setAttribute("aria-pressed",!!S.stars[t.id]);
@@ -647,14 +722,42 @@ const seek=$("#seek");let seeking=false;
 function tick(){
   let c,d;
   if(mode==="yt"&&ytReady){c=yt.getCurrentTime()||0;d=yt.getDuration()||0}else{c=A.currentTime||0;d=A.duration||30}
-  if(!seeking&&d){const p=c/d;seek.value=Math.round(p*1000);seek.style.setProperty("--p",(p*100)+"%")}
-  $("#cur").textContent=fmt(c*1000);$("#tot").textContent=fmt(d*1000);
+  if(!seeking&&d){const p=c/d;[seek,npSeek].forEach(s=>{s.value=Math.round(p*1000);s.style.setProperty("--p",(p*100)+"%")})}
+  $("#cur").textContent=$("#npCur").textContent=fmt(c*1000);
+  $("#tot").textContent=$("#npTot").textContent=fmt(d*1000);
 }
+const npSeek=$("#npSeek");
 setInterval(tick,500);
-seek.addEventListener("pointerdown",()=>seeking=true);
-seek.addEventListener("change",()=>seeking=false);
-seek.addEventListener("input",()=>{const f=seek.value/1000;seek.style.setProperty("--p",(f*100)+"%");
-  if(mode==="yt"&&ytReady){const d=yt.getDuration();if(d)yt.seekTo(f*d,true)}else if(A.duration)A.currentTime=f*A.duration});
+[seek,npSeek].forEach(s=>{
+  s.addEventListener("pointerdown",()=>seeking=true);
+  s.addEventListener("change",()=>seeking=false);
+  s.addEventListener("input",()=>{const f=s.value/1000;[seek,npSeek].forEach(x=>{x.value=s.value;x.style.setProperty("--p",(f*100)+"%")});
+    if(mode==="yt"&&ytReady){const d=yt.getDuration();if(d)yt.seekTo(f*d,true)}else if(A.duration)A.currentTime=f*A.duration});
+});
+
+/* ============ now-playing screen ============ */
+function paintNP(t){
+  $("#npArt").style.backgroundImage=`url('${t.art}')`;$("#npBg").style.backgroundImage=`url('${t.art}')`;
+  $("#npT").textContent=t.title;$("#npA").textContent=t.artist+(t.album?" · "+t.album:"");
+  $("#npStar").setAttribute("aria-pressed",!!S.stars[t.id]);
+  $("#npGenre").textContent=S.stars[t.id]?"In "+roomOf(S.stars[t.id]):(t.genre||"");
+  const up=Q.list.slice(Q.i+1,Q.i+4);
+  $("#npNext").innerHTML=up.length?`<p class="label">Up next</p>`+up.map((u,k)=>`<button class="np-up" data-upi="${Q.i+1+k}"><span class="art" style="background-image:url('${esc(u.art)}')"></span><span class="meta"><span class="t">${esc(u.title)}</span><span class="a">${esc(u.artist)}</span></span></button>`).join(""):"";
+}
+function openNP(){const n=$("#np");if(n.classList.contains("open"))return;n.hidden=false;requestAnimationFrame(()=>n.classList.add("open"));document.body.classList.add("np-open")}
+function closeNP(){const n=$("#np");n.classList.remove("open");document.body.classList.remove("np-open");setTimeout(()=>{if(!n.classList.contains("open"))n.hidden=true},350)}
+$("#npClose").onclick=closeNP;
+$("#now").addEventListener("click",e=>{if(e.target.closest("#nowStar"))return;if(Q.list[Q.i])openNP()});
+$("#npPlay").onclick=toggle;$("#npNextBtn").onclick=next;$("#npPrev").onclick=prev;
+$("#npShuffle").onclick=()=>{$("#shuffleBtn").click();const t=Q.list[Q.i];if(t)paintNP(t)};
+$("#npStar").onclick=()=>{const t=Q.list[Q.i];if(t)toggleStar(t.id).then(()=>paintNP(t))};
+$("#npSim").onclick=()=>{const t=Q.list[Q.i];if(t){closeNP();openSimilar(t.id)}};
+$("#npNext").addEventListener("click",e=>{const b=e.target.closest("[data-upi]");if(b){Q.i=+b.dataset.upi;load()}});
+// swipe down to close
+(()=>{let y0=null;const n=$("#np");
+  n.addEventListener("touchstart",e=>{if(e.target.closest("input"))return;y0=e.touches[0].clientY},{passive:true});
+  n.addEventListener("touchend",e=>{if(y0!==null&&e.changedTouches[0].clientY-y0>90)closeNP();y0=null},{passive:true});
+})();
 const vol=$("#vol");vol.value=Math.round(S.vol*100);A.volume=S.vol;vol.style.setProperty("--p",vol.value+"%");
 vol.addEventListener("input",()=>{A.volume=vol.value/100;S.vol=A.volume;if(ytReady)yt.setVolume(+vol.value);vol.style.setProperty("--p",vol.value+"%");save()});
 
@@ -670,17 +773,21 @@ $("#fixForm").addEventListener("submit",e=>{
 // settings
 const gear=$("#gearBtn");
 const paintGear=()=>gear.classList.toggle("on",hasFull());
-function openSettings(){$("#ytKey").value=S.ytKey||"";$("#prevOnly").checked=!!S.prevOnly;$("#keyMsg").textContent="";$("#keyMsg").className="";$("#settings").hidden=false;$("#ytKey").focus()}
+function openSettings(){$("#ytKey").value=S.ytKey||"";$(S.source==="youtube"?"#srcYt":"#srcAudio").checked=true;$("#keyMsg").textContent="";$("#keyMsg").className="";$("#settings").hidden=false;$("#ytKey").focus()}
 const closeSettings=()=>{$("#settings").hidden=true;paintGear();if(view==="search")render()};
 gear.onclick=openSettings;$("#closeSet").onclick=closeSettings;
 $("#settings").addEventListener("click",e=>{if(e.target.id==="settings")closeSettings()});
-$("#prevOnly").addEventListener("change",e=>{S.prevOnly=e.target.checked;save();paintGear()});
+document.querySelectorAll('input[name="source"]').forEach(r=>r.addEventListener("change",()=>{
+  S.source=r.value;save();paintGear();
+  if(S.source==="youtube"&&!S.ytKey){$("#keyMsg").className="";$("#keyMsg").textContent="Paste your YouTube key below to turn on full songs."}
+  else $("#keyMsg").textContent=S.source==="audio"?"Audio only is on. The next song plays without video.":"Full songs are on.";
+}));
 $("#saveKey").onclick=async()=>{
   const k=$("#ytKey").value.trim(),msg=$("#keyMsg");
   if(!k){S.ytKey="";save();msg.className="";msg.textContent="Key removed. Ghost will play previews.";paintGear();return}
   S.ytKey=k;msg.className="";msg.textContent="Testing…";
   try{const r=await ytSearch("Kesariya Arijit Singh audio",1);if(!r.length)throw new Error("yterr");
-    save();msg.className="ok";msg.textContent="Working. Full songs are on — press play on anything.";paintGear();}
+    save();msg.className="ok";msg.textContent=S.source==="youtube"?"Working. Full songs are on — press play on anything.":"The key works. Choose Full songs above whenever you want them.";paintGear();}
   catch(e){msg.className="bad";msg.textContent=e.message==="quota"?"The key works, but today's free searches are used up. It resets around 12:30 PM IST.":
     e.message==="badkey"?"Google refused this key. Check you enabled YouTube Data API v3, and that the website restriction matches this site's address.":"Couldn't reach YouTube. Check your connection and try again.";
     if(e.message==="quota")save();paintGear()}
@@ -765,6 +872,7 @@ document.addEventListener("keydown",e=>{
   if(!$("#cover").classList.contains("gone")){enter();return}
   const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if(e.key==="Escape"&&!$("#settings").hidden){closeSettings();return}
+  if(e.key==="Escape"&&$("#np").classList.contains("open")&&document.activeElement.tagName!=="INPUT"){closeNP();return}
   if(e.key==="Escape"){closeDrawer();$("#fullMenu").hidden=true;if(typing)document.activeElement.blur();return}
   if(typing)return;
   if(e.key==="/"){e.preventDefault();$("#q").focus()}
