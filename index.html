@@ -384,14 +384,31 @@ function fromItunes(r){
 }
 function fromDeezer(r){
   return reg({id:"dz:"+r.id,title:r.title,artist:r.artist?.name,album:r.album?.title,
-    art:r.album?.cover_xl||r.album?.cover_big||"",preview:r.preview,genre:null,ms:(r.duration||0)*1000,link:r.link});
+    art:r.album?.cover_xl||r.album?.cover_big||"",preview:r.preview,genre:null,ms:(r.duration||0)*1000,link:r.link,albumId:r.album?.id});
+}
+// Two catalogues: Apple first, Deezer as backup. If Apple fails once, skip it for the rest of this visit.
+let appleDown=false;
+async function searchApple(q,limit){
+  const d=await jsonp(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=${limit}&country=${COUNTRY}`,7000);
+  return (d.results||[]).filter(r=>r.kind==="song"&&r.previewUrl).map(fromItunes);
+}
+async function searchDeezer(q,limit){
+  const d=await jsonp(`https://api.deezer.com/search?q=${enc(q)}&limit=${Math.min(limit,50)}&output=jsonp`,9000);
+  if(d&&d.error)throw new Error(d.error.message||"refused");
+  return (d.data||[]).filter(r=>r.preview).map(fromDeezer);
 }
 async function searchSongs(q,limit=30){
-  const d=await jsonp(`https://itunes.apple.com/search?term=${enc(q)}&media=music&entity=song&limit=${limit}&country=${COUNTRY}`);
-  return (d.results||[]).filter(r=>r.kind==="song"&&r.previewUrl).map(fromItunes);
+  const errs=[];
+  if(!appleDown){
+    try{const r=await searchApple(q,limit);if(r.length)return r}
+    catch(e){appleDown=true;errs.push("Apple "+e.message)}
+  }
+  try{return await searchDeezer(q,limit)}catch(e){errs.push("Deezer "+e.message)}
+  throw new Error(errs.join(", ")||"no response");
 }
 async function findGenre(t){
   if(t.genre)return t.genre;
+  if(t.albumId){try{const al=await jsonp(`https://api.deezer.com/album/${t.albumId}?output=jsonp`,8000);const g=al.genres?.data?.[0]?.name;if(g)return g}catch(e){}}
   try{const r=await searchSongs(`${t.artist} ${t.title}`,5);const hit=r.find(x=>x.artist.toLowerCase()===String(t.artist).toLowerCase())||r[0];if(hit?.genre)return hit.genre}catch(e){}
   try{const r=await searchSongs(t.artist,5);if(r[0]?.genre)return r[0].genre}catch(e){}
   return "Uncategorised";
@@ -525,11 +542,11 @@ async function runSearch(q){
   if(location.hash!=="#search"){location.hash="search"}else{view="search"}
   $("#main").innerHTML=`<div class="spinner" role="status" aria-label="Searching"></div>`;
   try{const r=await searchSongs(q);if(my!==qSeq)return;lastResults=r}
-  catch(e){if(my!==qSeq)return;lastResults=[];$("#main").innerHTML=`<div class="empty">Couldn't reach the music catalogue. Check your connection and try again.</div>`;return}
+  catch(e){if(my!==qSeq)return;lastResults=[];$("#main").innerHTML=`<div class="empty"><p style="margin:0 0 6px;color:var(--fog)">Search couldn't reach either song catalogue.</p><p style="margin:0 0 14px">Check your internet connection. If you use a content blocker or VPN in Safari, turn it off for this site.</p><button class="btn" data-act="retry">Try again</button><p class="mono" style="margin:14px 0 0;font-size:11px">Details: ${esc(e.message)}</p></div>`;return}
   render();
 }
 $("#q").addEventListener("input",e=>{clearTimeout(qT);qT=setTimeout(()=>runSearch(e.target.value),420)});
-$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){clearTimeout(qT);runSearch(e.target.value)}});
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(qT);runSearch(e.target.value);e.target.blur()}});
 
 /* ============ full songs via YouTube ============ */
 S.yt=S.yt||{};
@@ -719,6 +736,7 @@ document.addEventListener("click",e=>{
   else if(a==="similar"&&row)openSimilar(row.dataset.id);
   else if(a==="back"){openRoom=null;render()}
   else if(a==="settings")openSettings();
+  else if(a==="retry"){appleDown=false;runSearch($("#q").value||lastQuery)}
   else if(a==="clearRecent"){S.recent=[];save();render()}
   else if(a==="surprise"){const st=Object.keys(S.stars);if(st.length)openSimilar(st[Math.floor(Math.random()*st.length)])}
   else if(a==="export"){
