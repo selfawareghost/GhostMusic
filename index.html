@@ -30,7 +30,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--ink);color:var(--fog);font:15px/1.5 var(--body)}
-body{min-height:100vh;padding-bottom:calc(var(--stack) + 28px);-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;padding-top:env(safe-area-inset-top,0px);padding-bottom:calc(var(--stack) + 28px);-webkit-tap-highlight-color:transparent}
 button{transition:transform .15s ease}
 button:active{transform:scale(.96)}
 button,input,select{font:inherit;color:inherit}
@@ -57,6 +57,15 @@ a{color:var(--lantern)}
 .enter{margin-top:6px;display:inline-flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:999px;padding:12px 22px 12px 14px;transition:border-color .2s,background .2s}
 .enter:hover{border-color:var(--lantern);background:var(--ink-2)}
 .enter .disc{width:30px;height:30px;border-radius:50%;background:var(--lantern);color:var(--lantern-ink);display:grid;place-items:center}
+.gate{display:grid;gap:8px;justify-items:center;width:min(320px,100%)}
+.gate-row{display:flex;gap:8px;width:100%;padding:6px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--ink-2) 80%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .25s}
+.gate-row:focus-within{border-color:var(--lantern)}
+.gate input{flex:1;min-width:0;background:none;border:0;outline:none;padding:8px 14px;font-size:16px;letter-spacing:.08em;color:var(--fog)}
+.gate input::placeholder{letter-spacing:.02em;color:var(--mist)}
+.gate-go{width:40px;height:40px;border-radius:50%;background:var(--lantern);color:var(--lantern-ink);display:grid;place-items:center;flex:none}
+.gate-msg{margin:0;min-height:1.4em;font-size:13px;color:var(--rose)}
+.gate.shake .gate-row{animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 .cover-foot{position:absolute;bottom:max(20px,env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center}
 
 /* ---------- Top bar ---------- */
@@ -115,6 +124,8 @@ h2{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.1;mar
 .btn.primary:hover{filter:brightness(1.07)}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap}
 .empty{border:1px dashed var(--line);border-radius:var(--r);padding:28px;color:var(--mist);text-align:center}
+.sync-line{display:flex;align-items:center;gap:8px;margin:10px 0 0;font-size:13px;color:var(--mist)}
+.sync-line i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
 .connect{border:1px solid color-mix(in srgb,var(--lantern) 40%,var(--line));background:color-mix(in srgb,var(--lantern) 6%,var(--ink));border-radius:16px;padding:26px;display:grid;gap:14px;max-width:620px}
 .connect h2{font-size:26px}
 .connect p{margin:0;color:var(--mist)}
@@ -318,12 +329,20 @@ body.np-open #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
     <p class="label">a private listening room</p>
     <h1 class="wordmark" aria-label="Ghost"><span>G</span><span>H</span><span>O</span><span>S</span><span>T</span></h1>
     <p class="tag">Search anything. <b>Star</b> what haunts you. Let it find its own room.</p>
-    <button class="enter" id="enterBtn">
+    <form class="gate" id="gate" autocomplete="off">
+      <label for="pw" class="label">Password</label>
+      <div class="gate-row">
+        <input id="pw" type="password" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="Enter password" aria-describedby="pwMsg">
+        <button type="submit" class="gate-go" aria-label="Enter Ghost"><svg width="14" height="14" viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z" fill="currentColor"/></svg></button>
+      </div>
+      <p id="pwMsg" class="gate-msg" role="status"></p>
+    </form>
+    <button class="enter" id="enterBtn" hidden>
       <span class="disc"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 1l9 5-9 5z" fill="currentColor"/></svg></span>
       <span>Enter</span>
     </button>
   </div>
-  <div class="cover-foot label" id="coverFoot">press any key</div>
+  <div class="cover-foot label" id="coverFoot"></div>
 </section>
 
 <!-- ================= TOP BAR ================= -->
@@ -452,6 +471,11 @@ body.np-open #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
     <div class="status" id="spStatus"><i></i><span id="spStatusText">Not connected</span></div>
 
     <div id="setupBlock" style="display:grid;gap:14px">
+      <div id="simpleLogin" style="display:grid;gap:12px" hidden>
+        <p>Log in with your Spotify Premium account. Your stars and playlists appear right after.</p>
+        <div class="btn-row"><button class="btn primary" type="button" data-act="relogin">Log in with Spotify</button></div>
+      </div>
+      <div id="setupSteps" style="display:grid;gap:14px">
       <p>Ghost plays full songs from your Spotify Premium account. Spotify asks every personal app for its own ID, so there's a one-time setup of about 10 minutes.</p>
       <ol>
         <li>Open <b>developer.spotify.com/dashboard</b> and log in with your Spotify Premium account. Accept the terms if asked.</li>
@@ -464,6 +488,7 @@ body.np-open #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
       <label for="cid">Client ID</label>
       <input id="cid" type="text" placeholder="32 letters and numbers" autocomplete="off" spellcheck="false" autocapitalize="off">
       <div class="btn-row"><button class="btn primary" id="connectBtn">Connect Spotify</button></div>
+      </div>
     </div>
 
     <p id="setMsg" role="status"></p>
@@ -550,11 +575,13 @@ const slim=t=>({id:t.id,uri:t.uri,title:t.title,artist:t.artist,artistId:t.artis
 
 /* ============ Spotify login (PKCE — no password or secret ever touches Ghost) ============ */
 const SKEY="ghost.spotify";
+const BUILTIN_CID="0447fd28ea0d4dd88b4e8fcae04a16e1"; // your Ghost app's Spotify Client ID (public by design, not a secret)
 let SP={cid:"",access:"",refresh:"",exp:0,name:""};
 try{const raw=localStorage.getItem(SKEY);if(raw)SP=Object.assign(SP,JSON.parse(raw))}catch(e){}
+if(!SP.cid)SP.cid=BUILTIN_CID;
 const saveSP=()=>{try{localStorage.setItem(SKEY,JSON.stringify(SP))}catch(e){}};
 const REDIRECT=location.origin+location.pathname.replace(/index\.html$/,"");
-const SCOPES="streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state";
+const SCOPES="streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private playlist-modify-public user-read-recently-played";
 const connected=()=>!!(SP.cid&&SP.refresh);
 const b64u=a=>btoa(String.fromCharCode(...a)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 async function login(){
@@ -569,7 +596,7 @@ async function tokenRequest(body){
   const r=await fetch("https://accounts.spotify.com/api/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams(body)});
   const d=await r.json().catch(()=>({}));
   if(!r.ok){const e=new Error(d.error_description||d.error||("HTTP "+r.status));e.code=d.error;throw e}
-  SP.access=d.access_token;SP.exp=Date.now()+(d.expires_in||3600)*1000;if(d.refresh_token)SP.refresh=d.refresh_token;saveSP();
+  SP.access=d.access_token;SP.exp=Date.now()+(d.expires_in||3600)*1000;if(d.refresh_token)SP.refresh=d.refresh_token;if(d.scope)SP.scope=d.scope;saveSP();
 }
 async function finishLogin(){
   const p=new URLSearchParams(location.search);
@@ -580,7 +607,7 @@ async function finishLogin(){
   if(!pk.v||pk.st!==p.get("state")){notice("Spotify sent you back, but this window didn't start the login. On iPhone, use the login code in ⚙ to move your login here.");return true}
   try{SP.cid=pk.cid||SP.cid;await tokenRequest({grant_type:"authorization_code",code:p.get("code"),redirect_uri:REDIRECT,client_id:SP.cid,code_verifier:pk.v});
     try{localStorage.removeItem("ghost.pkce")}catch(e){}
-    const me=await api("/me").catch(()=>null);SP.name=me?.display_name||"";saveSP();
+    const me=await api("/me").catch(()=>null);SP.name=me?.display_name||"";if(me?.id)SP.uid=me.id;saveSP();
     toast("Spotify connected"+(SP.name?" · "+SP.name:""));
   }catch(e){notice("Spotify didn't accept the login: "+e.message+". Check the Client ID and that the Redirect URI matches exactly.",[{label:"Open settings",fn:openSettings}])}
   return true;
@@ -802,16 +829,109 @@ async function similarTo(t,round=0){
 /* ============ star ============ */
 async function toggleStar(id){
   const t=T.get(id);if(!t)return;
-  if(S.stars[id]){const room=roomOf(S.stars[id]);delete S.stars[id];save();toast("Removed from "+room);refreshStars();return}
+  if(S.stars[id]){const old=S.stars[id],room=roomOf(old);delete S.stars[id];save();queueOp({op:"del",uri:old.uri,room});toast("Removed from "+room);refreshStars();return}
   S.stars[id]=Object.assign(slim(t),{addedAt:Date.now(),genre:"…"});save();refreshStars();
   toast("★ Starred · finding its playlist…");
   let g=null;try{g=await findGenre(t)}catch(e){}
   if(!S.stars[id])return;
   Object.assign(S.stars[id],{uri:t.uri,artistId:t.artistId});
-  if(g){t.genre=g;S.stars[id].genre=g;save();toast("★ Added to "+roomOf(S.stars[id]))}
-  else{S.stars[id].genre=indianHints(t)?"Bollywood":"Pop";save();toast("★ Added to "+roomOf(S.stars[id]))}
+  if(g){t.genre=g;S.stars[id].genre=g}else S.stars[id].genre=indianHints(t)?"Bollywood":"Pop";
+  save();queueOp({op:"add",id});toast("★ Added to "+roomOf(S.stars[id]));
   refreshStars();
 }
+/* ============ sync: your stars live in your Spotify account ============ */
+// Every genre playlist is a private Spotify playlist named "Ghost · <genre>". Any device that logs in
+// to the same Spotify account reads them back, so stars, playlists and moves are the same everywhere.
+const PL_PREFIX="Ghost · ";
+S.pl=S.pl||{};S.outbox=S.outbox||[];
+const hasSync=()=>connected()&&/playlist-modify-private/.test(SP.scope||"");
+let syncing=false,flushing=false,lastSync=0,syncT=null;
+function paintSync(txt){const el=document.getElementById("syncState");if(el)el.textContent=txt;syncLabel=txt}
+let syncLabel="";
+function moveOps(s,to){const from=roomOf(s);if(from===to||!s.uri)return;queueOp({op:"del",uri:s.uri,room:from});queueOp({op:"add",id:s.id,room:to})}
+function queueOp(o){if(o.op==="del"&&(!o.uri||o.room==="…"))return;S.outbox.push(o);save();flush()}
+async function allPages(path){let out=[],url=path,guard=0;while(url&&guard++<60){const d=await api(url);out=out.concat(d?.items||[]);url=d?.next?d.next.replace("https://api.spotify.com/v1",""):null}return out}
+async function loadPlaylists(){
+  if(!SP.uid){const me=await api("/me");SP.uid=me?.id||"";SP.name=me?.display_name||SP.name;saveSP()}
+  const ps=await allPages("/me/playlists?limit=50");const m={};
+  ps.forEach(p=>{if(p&&p.name&&p.name.startsWith(PL_PREFIX)&&(!p.owner||p.owner.id===SP.uid)){const room=p.name.slice(PL_PREFIX.length).trim();if(room&&!m[room])m[room]=p.id}});
+  S.pl=m;save();return m;
+}
+async function roomPlaylist(room){
+  if(S.pl[room])return S.pl[room];
+  const p=await api("/me/playlists",{method:"POST",body:{name:PL_PREFIX+room,public:false,description:"Made by Ghost: songs you starred, sorted by genre."}});
+  S.pl[room]=p.id;save();return p.id;
+}
+async function delItems(pid,uris){
+  try{await api(`/playlists/${pid}/items`,{method:"DELETE",body:{items:uris.map(uri=>({uri}))}})}
+  catch(e){if(e.status===400)await api(`/playlists/${pid}/items`,{method:"DELETE",body:{tracks:uris.map(uri=>({uri}))}});else throw e}
+}
+async function runOp(o){
+  if(o.op==="add"){
+    const s=S.stars[o.id];if(!s)return;            // un-starred again before it synced
+    if(!s.uri)await ensureSp(s);if(!s.uri)return;
+    const room=o.room||roomOf(s);if(room==="…"||room!==roomOf(s))return; // moved again since; a newer op handles it
+    const pid=await roomPlaylist(room);
+    try{await api(`/playlists/${pid}/items`,{method:"POST",body:{uris:[s.uri]}})}
+    catch(e){if(e.status===404){delete S.pl[room];save();const pid2=await roomPlaylist(room);await api(`/playlists/${pid2}/items`,{method:"POST",body:{uris:[s.uri]}})}else throw e}
+  }else if(o.op==="del"){
+    const pid=S.pl[o.room];if(!pid)return;
+    try{await delItems(pid,[o.uri])}catch(e){if(e.status!==404)throw e}
+  }
+}
+async function flush(){
+  if(flushing||!hasSync())return;flushing=true;
+  try{
+    if(!Object.keys(S.pl).length)await loadPlaylists();
+    while(S.outbox.length){
+      const o=S.outbox[0];
+      try{await runOp(o)}catch(e){if(e.status===401||e.status===403||e.status===429||!e.status){paintSync("Saved here · will sync when online");break}}
+      S.outbox.shift();save();
+    }
+    if(!S.outbox.length)paintSync("Synced with your Spotify");
+  }catch(e){paintSync("Saved here · will sync when online")}
+  finally{flushing=false}
+}
+async function syncDown(){
+  if(!hasSync()||syncing)return;syncing=true;paintSync("Syncing…");
+  try{
+    await flush();
+    if(S.outbox.length){syncing=false;return}   // still offline: keep this device's version for now
+    const pls=await loadPlaylists();
+    const remote={},latestByArtist={};
+    for(const [room,pid] of Object.entries(pls)){
+      const items=await allPages(`/playlists/${pid}/items?limit=50`);
+      items.forEach(x=>{
+        const tr=x.item||x.track;if(!tr||(tr.type&&tr.type!=="track"))return;
+        const t=fromSp(tr);if(!t)return;
+        const at=x.added_at?Date.parse(x.added_at):Date.now();
+        if(remote[t.id]&&remote[t.id].addedAt>=at)return;
+        remote[t.id]=Object.assign(slim(t),{genre:room,addedAt:at});t.genre=room;
+        if(t.artistId&&(!latestByArtist[t.artistId]||latestByArtist[t.artistId].at<at))latestByArtist[t.artistId]={room,at};
+      });
+    }
+    if(S.syncedWith!==SP.uid){
+      // First sync on this device: send up any stars that only exist here.
+      const localOnly=Object.values(S.stars).filter(st=>!remote[st.id]&&st.genre!=="…");
+      S.syncedWith=SP.uid;
+      localOnly.forEach(st=>{remote[st.id]=st;S.outbox.push({op:"add",id:st.id})});
+    }
+    // keep stars still waiting for their genre
+    Object.values(S.stars).forEach(st=>{if(st.genre==="…"&&!remote[st.id])remote[st.id]=st});
+    S.stars=remote;Object.entries(latestByArtist).forEach(([a,v])=>S.artistRoom[a]=v.room);
+    save();lastSync=Date.now();
+    paintCount();refreshStars();if(view==="library"||view==="discover"||(view==="search"&&!lastQuery))render();
+    paintSync("Synced with your Spotify");
+    if(S.outbox.length){syncing=false;flush()}
+  }catch(e){paintSync("Couldn't sync just now · will retry")}
+  finally{syncing=false}
+}
+function syncSoon(ms){clearTimeout(syncT);syncT=setTimeout(syncDown,ms||0)}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&Date.now()-lastSync>15000)syncSoon(400)});
+window.addEventListener("focus",()=>{if(Date.now()-lastSync>15000)syncSoon(400)});
+window.addEventListener("online",()=>syncSoon(500));
+setInterval(()=>{if(document.visibilityState==="visible"&&!document.hidden)syncDown()},60000);
+
 const needsSort=s=>!s.playlist&&(!s.genre||s.genre==="…"||s.genre==="Unsorted"||s.genre==="Uncategorised");
 // Sort songs that are stuck in Unsorted. quiet: don't ask about the ones Ghost can't place.
 let sorting=false;
@@ -824,7 +944,7 @@ async function sortUnsorted(quiet){
     let g=null;try{g=await findGenre(t)}catch(e){}
     if(!S.stars[id])continue;
     S.stars[id].artistId=t.artistId||S.stars[id].artistId;S.stars[id].uri=t.uri||S.stars[id].uri;
-    if(g){S.stars[id].genre=g;t.genre=g;done++}else{S.stars[id].genre="Unsorted";left.push(id)}
+    if(g){S.stars[id].genre=g;t.genre=g;done++;queueOp({op:"add",id})}else{S.stars[id].genre="Unsorted";left.push(id)}
     save();if(view==="library"&&!openRoom)render();
   }
   sorting=false;refreshStars();
@@ -886,12 +1006,14 @@ const contexts={};
 function listHTML(tracks,ctx,opts){contexts[ctx]=tracks.map(t=>t.id);return `<div class="list">${tracks.map(t=>rowHTML(t,ctx,opts)).join("")}</div>`}
 
 /* ============ views ============ */
+let recentFetched=false;
 let view="search",lastResults=[],lastQuery="",openRoom=null,moreOffset=20;
 const SUGGEST=["Arijit Singh","Kun Faya Kun","Prateek Kuhad","Diljit Dosanjh","The Weeknd","Coldplay","A. R. Rahman","Lo-fi","Nusrat Fateh Ali Khan","Hans Zimmer"];
 function roomNames(){return [...new Set(Object.values(S.stars).map(roomOf))].sort()}
 function rooms(){const m={};Object.values(S.stars).sort((a,b)=>b.addedAt-a.addedAt).forEach(t=>{(m[roomOf(t)]=m[roomOf(t)]||[]).push(t)});return m}
 function mosaic(ts){const arts=ts.slice(0,4).map(t=>t.art);if(arts.length<4)return `<div class="mosaic one"><div style="background-image:url('${esc(arts[0])}')"></div></div>`;return `<div class="mosaic">${arts.map(a=>`<div style="background-image:url('${esc(a)}')"></div>`).join("")}</div>`}
-const connectCard=()=>`<div class="connect"><p class="label">One step left</p><h2>Connect your Spotify Premium</h2><p>Ghost searches Spotify and plays every song in full from your account. Setup takes about 10 minutes, once.</p><div class="btn-row"><button class="btn primary" data-act="settings">Connect Spotify</button></div></div>`;
+const syncCard=()=>`<div class="connect" style="max-width:none;margin-bottom:24px"><p class="label">Turn on sync</p><p style="color:var(--fog)"><b>Same stars on every device.</b> <span style="color:var(--mist)">Log in to Spotify once more so Ghost can keep your playlists in your Spotify account. Your phone and computer then always match.</span></p><div class="btn-row"><button class="btn primary" data-act="relogin">Turn on sync</button></div></div>`;
+const connectCard=()=>`<div class="connect"><p class="label">One step left</p><h2>Log in with Spotify</h2><p>Ghost plays every song in full from your Spotify Premium account and keeps your stars in sync on all your devices. One tap, once per device.</p><div class="btn-row"><button class="btn primary" data-act="relogin">Log in with Spotify</button></div></div>`;
 
 function render(){
   document.querySelectorAll("nav.tabs a, .tabbar a").forEach(a=>a.setAttribute("aria-current",a.dataset.view===view?"page":"false"));
@@ -924,9 +1046,11 @@ function render(){
       return;
     }
     openRoom=null;
-    if(!all.length){M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2></div></div><div class="empty">Star a song from search and a playlist for its genre appears here on its own.</div>${ioRow()}`;return}
+    if(!all.length){M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2></div></div>${connected()&&!hasSync()?syncCard():""}<div class="empty">Star a song from search and a playlist for its genre appears here on its own.</div>${ioRow()}`;return}
     const unsorted=all.filter(needsSort).length;
-    M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2><p class="sub">Sorted automatically by genre. Move any song with the menu inside a playlist, and Ghost remembers that artist's place.</p></div></div>
+    M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2><p class="sub">Sorted automatically by genre. Move any song with the menu inside a playlist, and Ghost remembers that artist's place.</p>
+      <p class="sync-line"><i></i><span id="syncState">${esc(hasSync()?(syncLabel||"Synced with your Spotify"):"Only on this device")}</span></p></div></div>
+      ${connected()&&!hasSync()?syncCard():""}
       ${unsorted?`<div class="connect" style="max-width:none;margin-bottom:24px;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:16px 18px"><p style="color:var(--fog)"><b>${unsorted} song${unsorted>1?"s are":" is"} still unsorted.</b> <span style="color:var(--mist)">Ghost will try again, and ask you about any it can't place.</span></p><button class="btn primary" data-act="sortnow"${sorting?" disabled":""}>${sorting?"Sorting…":"Sort them"}</button></div>`:""}
       <div class="stats"><div class="stat"><span class="label">Starred</span><b>${all.length}</b></div><div class="stat"><span class="label">Playlists</span><b>${names.length}</b></div><div class="stat"><span class="label">Your sound</span><b style="font-family:var(--display);font-size:22px">${esc(names[0])}</b></div></div>
       <div class="grid">
@@ -935,7 +1059,8 @@ function render(){
       </div>${ioRow()}`;
   }
   else if(view==="recent"){
-    M.innerHTML=`<div class="sec-head"><div><h2>Recently played</h2><p class="sub">Your last plays on this device.</p></div>${S.recent.length?`<div class="btn-row"><button class="btn" data-playctx="recent">Play again</button><button class="btn" data-act="clearRecent">Clear</button></div>`:""}</div>
+    if(hasSync()&&!recentFetched){recentFetched=true;api("/me/player/recently-played?limit=40").then(d=>{const seen=new Set();const list=(d?.items||[]).map(x=>fromSp(x.track)).filter(t=>t&&!seen.has(t.id)&&seen.add(t.id));if(list.length){S.recent=list.map(slim);save();if(view==="recent")render()}}).catch(()=>{});setTimeout(()=>recentFetched=false,30000)}
+    M.innerHTML=`<div class="sec-head"><div><h2>Recently played</h2><p class="sub">${hasSync()?"Your latest plays on Spotify, from every device.":"Your last plays on this device."}</p></div>${S.recent.length?`<div class="btn-row"><button class="btn" data-playctx="recent">Play again</button><button class="btn" data-act="clearRecent">Clear</button></div>`:""}</div>
       ${S.recent.length?listHTML(S.recent.map(t=>T.get(t.id)||t),"recent"):`<div class="empty">Songs you play will show up here.</div>`}`;
   }
   else if(view==="discover"){
@@ -1226,8 +1351,9 @@ function paintGear(){$("#gearBtn").classList.toggle("on",connected())}
 function paintSettings(){
   const on=connected();
   $("#spStatus").classList.toggle("on",on);
-  $("#spStatusText").textContent=on?("Connected"+(SP.name?" as "+SP.name:"")+" · Spotify Premium"):"Not connected";
+  $("#spStatusText").textContent=on?("Connected"+(SP.name?" as "+SP.name:"")+(hasSync()?" · sync on":" · sync off — log in again to turn it on")):"Not connected";
   $("#setupBlock").hidden=on;$("#connectedBlock").hidden=!on;
+  const simple=!on&&SP.cid===BUILTIN_CID;$("#setupSteps").hidden=simple;$("#simpleLogin").hidden=!simple;
   $("#redirUri").textContent=REDIRECT;$("#cid").value=SP.cid||"";
 }
 function openSettings(){paintSettings();setMsg("","");$("#settings").hidden=false}
@@ -1257,7 +1383,7 @@ $("#copyCode").onclick=()=>{if(!connected())return;copyText("GHOST-"+btoa(JSON.s
 $("#useCode").onclick=async()=>{
   const v=$("#pasteCode").value.trim().replace(/^GHOST-/,"");
   try{const o=JSON.parse(atob(v));if(!o.c||!o.r)throw 0;SP={cid:o.c,refresh:o.r,access:"",exp:0,name:""};saveSP();await token(true);
-    const me=await api("/me").catch(()=>null);SP.name=me?.display_name||"";saveSP();$("#pasteCode").value="";paintSettings();paintGear();setMsg("ok","Spotify connected.")}
+    const me=await api("/me").catch(()=>null);SP.name=me?.display_name||"";if(me?.id)SP.uid=me.id;saveSP();$("#pasteCode").value="";paintSettings();paintGear();setMsg("ok","Spotify connected.")}
   catch(e){setMsg("bad","That code didn't work. Copy a fresh one and paste it again.")}
 };
 
@@ -1273,6 +1399,7 @@ document.addEventListener("click",e=>{
   else if(a==="similar"&&row)openSimilar(row.dataset.id);
   else if(a==="back"){openRoom=null;render()}
   else if(a==="settings")openSettings();
+  else if(a==="relogin"){if(SP.cid)login();else openSettings()}
   else if(a==="sortnow"){if(!connected()){openSettings();return}sortUnsorted(false);render()}
   else if(a==="retry")runSearch($("#q").value||lastQuery);
   else if(a==="more"){act.disabled=true;act.textContent="Loading…";searchSongs(lastQuery,moreOffset,1).then(r=>{moreOffset+=10;const ids=new Set(lastResults.map(x=>x.id));lastResults=lastResults.concat(r.filter(x=>!ids.has(x.id)));if(!r.length)moreOffset=999;render()}).catch(()=>{act.disabled=false;act.textContent="More results";toast("Couldn't load more")})}
@@ -1288,20 +1415,20 @@ document.addEventListener("change",e=>{
   const sel=e.target.closest("[data-move]");if(!sel)return;
   const id=sel.dataset.move;const name=sel.value;
   if(name==="+ New playlist…"){sel.hidden=true;const inp=document.createElement("input");inp.className="movesel";inp.placeholder="Playlist name";sel.after(inp);inp.focus();
-    let done=false;const fin=()=>{if(done)return;done=true;const v=inp.value.trim();if(v&&S.stars[id]){const s=S.stars[id];s.playlist=undefined;s.genre=v;if(s.artistId)S.artistRoom[s.artistId]=v;save();toast("Moved to "+v)}render()};
+    let done=false;const fin=()=>{if(done)return;done=true;const v=inp.value.trim();if(v&&S.stars[id]){const s=S.stars[id];moveOps(s,v);s.playlist=undefined;s.genre=v;if(s.artistId)S.artistRoom[s.artistId]=v;save();toast("Moved to "+v)}render()};
     inp.addEventListener("keydown",k=>{if(k.key==="Enter")fin();if(k.key==="Escape"){done=true;render()}});inp.addEventListener("blur",fin);return}
-  if(S.stars[id]){const s=S.stars[id];s.playlist=undefined;s.genre=name;if(s.artistId)S.artistRoom[s.artistId]=name;save();toast("Moved to "+name+" · new stars by this artist go there too");render()}
+  if(S.stars[id]){const s=S.stars[id];moveOps(s,name);s.playlist=undefined;s.genre=name;if(s.artistId)S.artistRoom[s.artistId]=name;save();toast("Moved to "+name+" · new stars by this artist go there too");render()}
 });
 $("#importFile").addEventListener("change",async e=>{
   const f=e.target.files[0];if(!f)return;
-  try{const d=JSON.parse(await f.text());if(!d.stars)throw 0;let n=0;Object.values(d.stars).forEach(t=>{if(t.id&&!S.stars[t.id]){S.stars[t.id]=t;T.set(t.id,t);n++}});save();refreshStars();render();toast(`Restored ${n} songs`)}
+  try{const d=JSON.parse(await f.text());if(!d.stars)throw 0;let n=0;Object.values(d.stars).forEach(t=>{if(t.id&&!S.stars[t.id]){S.stars[t.id]=t;T.set(t.id,t);n++;queueOp({op:"add",id:t.id})}});save();refreshStars();render();toast(`Restored ${n} songs`)}
   catch(err){toast("That file isn't a Ghost backup")}
   e.target.value="";
 });
 
 /* ============ keyboard ============ */
 document.addEventListener("keydown",e=>{
-  if(!$("#cover").classList.contains("gone")){enter();return}
+  if(!$("#cover").classList.contains("gone")){if(unlocked)enter();return}
   const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if(e.key==="Escape"){if(!$("#settings").hidden){closeSettings();return}if($("#drawer").classList.contains("open")){closeDrawer();return}if($("#np").classList.contains("open")){closeNP();return}if(typing)document.activeElement.blur();return}
   if(!$("#picker").hidden){if(e.key==="Escape")$("#pkSkip").click();return}
@@ -1315,10 +1442,36 @@ document.addEventListener("keydown",e=>{
 
 /* ============ cover ============ */
 let stopWaves=false;
-function enter(){const c=$("#cover");if(c.classList.contains("gone"))return;c.classList.add("gone");stopWaves=true;if(!isMobile)setTimeout(()=>$("#q").focus({preventScroll:true}),400)}
+// Password screen. The password is stored only as a fingerprint (SHA-256), never as plain text.
+const PW_HASH="67a5e9f2070aa8d264d55ad448864df6c84d6877f03a48b05a7293fa53fdd323";
+let unlocked=false;try{unlocked=localStorage.getItem("ghost.unlock")===PW_HASH}catch(e){}
+function sha256hex(str){ // small built-in SHA-256 so the check also works where the browser's crypto is unavailable
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const b=new TextEncoder().encode(str),l=b.length,n=((l+9+63)>>6)<<6,m=new Uint8Array(n);m.set(b);m[l]=0x80;
+  const dv=new DataView(m.buffer);dv.setUint32(n-4,l*8);dv.setUint32(n-8,Math.floor(l/0x20000000));
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const w=new Uint32Array(64),r=(x,y)=>(x>>>y)|(x<<(32-y));
+  for(let o=0;o<n;o+=64){for(let i=0;i<16;i++)w[i]=dv.getUint32(o+i*4);
+    for(let i=16;i<64;i++){const s0=r(w[i-15],7)^r(w[i-15],18)^(w[i-15]>>>3),s1=r(w[i-2],17)^r(w[i-2],19)^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)|0}
+    let [a,bb,c,d,e,f,g,h]=H;
+    for(let i=0;i<64;i++){const t1=(h+(r(e,6)^r(e,11)^r(e,25))+((e&f)^(~e&g))+K[i]+w[i])|0,t2=((r(a,2)^r(a,13)^r(a,22))+((a&bb)^(a&c)^(bb&c)))|0;h=g;g=f;f=e;e=(d+t1)|0;d=c;c=bb;bb=a;a=(t1+t2)|0}
+    H=H.map((v,i)=>(v+[a,bb,c,d,e,f,g,h][i])|0)}
+  return H.map(v=>(v>>>0).toString(16).padStart(8,"0")).join("");
+}
+function paintGate(){$("#gate").hidden=unlocked;$("#enterBtn").hidden=!unlocked;$("#coverFoot").textContent=unlocked?(matchMedia("(hover:none)").matches?"tap enter":"press any key"):""}
+function enter(){
+  if(!unlocked){$("#pw").focus();return}
+  const c=$("#cover");if(c.classList.contains("gone"))return;c.classList.add("gone");stopWaves=true;
+  if(!isMobile)setTimeout(()=>$("#q").focus({preventScroll:true}),400);
+  syncSoon(300);
+}
+$("#gate").addEventListener("submit",e=>{
+  e.preventDefault();const v=$("#pw").value.trim().toLowerCase();
+  if(sha256hex(v)===PW_HASH){unlocked=true;try{localStorage.setItem("ghost.unlock",PW_HASH)}catch(e){}$("#pw").blur();$("#pwMsg").textContent="";paintGate();enter()}
+  else{$("#pwMsg").textContent=v?"That's not it. Try again.":"Type the password to enter.";const g=$("#gate");g.classList.remove("shake");void g.offsetWidth;g.classList.add("shake");$("#pw").select()}
+});
 $("#enterBtn").onclick=enter;
-$("#cover").addEventListener("click",e=>{if(isMobile)enter()});
-if(matchMedia("(hover:none)").matches)$("#coverFoot").textContent="tap enter";
+$("#cover").addEventListener("click",e=>{if(isMobile&&unlocked&&!e.target.closest("form"))enter()});
+paintGate();
 (function waves(){
   const cv=$("#waves"),cx=cv.getContext("2d");let w,h;
   const size=()=>{const dpr=Math.min(devicePixelRatio||1,2);w=cv.clientWidth;h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;cx.setTransform(dpr,0,0,dpr,0,0)};
@@ -1346,11 +1499,12 @@ $("#installClose").onclick=()=>{$("#install").hidden=true;try{localStorage.setIt
   paintGear();
   if(Q.i<0)document.body.classList.add("idle");
   const returned=await finishLogin();
-  if(returned)enter();
+  if(returned&&unlocked)enter();
   paintGear();
   go(location.hash.slice(1)||"search");
   if(connected()&&wantMode()==="web")loadSdk();
   if(connected())setTimeout(()=>sortUnsorted(true),1500); // quietly fix songs left in Unsorted earlier
+  if(connected()){if(unlocked)syncSoon(200);if(!hasSync())setTimeout(()=>{if(unlocked&&$("#notice").hidden)notice("New: your stars can now sync between phone and computer. Log in to Spotify once more to turn it on.",[{label:"Turn on sync",fn:()=>login()}])},2500)}
   if(connected()&&wantMode()==="app"){ // pick up whatever your Spotify app is already playing
     try{const d=await api("/me/player");if(d&&d.item){curMode="app";curDevName=d.device?.name||"Spotify";paintDev();onState({paused:!d.is_playing,pos:d.progress_ms,dur:d.item.duration_ms,uri:d.item.uri,item:d.item});startPoll()}}catch(e){}
   }
