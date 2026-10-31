@@ -413,6 +413,18 @@ body.np-open #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
   </div>
 </div>
 
+<!-- ================= PLAYLIST PICKER ================= -->
+<div id="picker" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+  <div class="mbox">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3 id="pkTitle">Which playlist?</h3><span class="label" id="pkCount"></span></div>
+    <div class="dseed"><div class="art" id="pkArt"></div><div class="meta"><div class="t" id="pkT"></div><div class="a" id="pkA"></div></div></div>
+    <p>Spotify doesn't list a genre for this artist. Pick once, and Ghost files this artist's future stars there automatically.</p>
+    <div class="chips" id="pkChips"></div>
+    <div style="display:flex;gap:8px"><input id="pkNew" type="text" placeholder="Or name a new playlist" autocomplete="off" style="font-family:var(--body)"><button class="btn primary" id="pkNewBtn">Add</button></div>
+    <div class="btn-row"><button class="btn" id="pkSkip">Leave in Unsorted</button></div>
+  </div>
+</div>
+
 <div id="install" class="card-float" hidden role="note">
   <img src="icon-180.png" alt="">
   <p><b>Install Ghost on your iPhone.</b> Tap <b>Share</b> <svg width="13" height="15" viewBox="0 0 24 28" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-2px"><path d="M12 17V2M6 8l6-6 6 6M5 12H3v14h18V12h-2"/></svg> then <b>Add to Home Screen</b>.</p>
@@ -553,17 +565,67 @@ const BUCKETS=[[/filmi|bollywood|hindi film|tollywood|kollywood|mollywood|sandal
   [/lo-?fi|chill/,"Lo-fi & Chill"],[/hip hop|rap|trap|drill/,"Hip-Hop"],[/r&b|soul/,"R&B & Soul"],[/metal|rock|grunge|punk|shoegaze/,"Rock"],
   [/edm|house|techno|electro|dance|dubstep|trance|drum and bass/,"Electronic"],[/jazz|blues/,"Jazz & Blues"],[/soundtrack|score|orchestra|classical|ambient/,"Classical & Score"],
   [/latin|reggaeton/,"Latin"],[/country/,"Country"],[/indie|folk|singer-songwriter/,"Indie & Folk"],[/pop/,"Pop"]];
-function bucket(gs){for(const [re,n] of BUCKETS)if(gs.some(g=>re.test(g)))return n;return gs[0]?gs[0].replace(/\b\w/g,c=>c.toUpperCase()):"Unsorted"}
+// Spotify has emptied the genre list for many artists, so Ghost also asks MusicBrainz
+// (a free, open music encyclopedia) for the artist's genre tags and home country.
+S.mb=S.mb||{};S.artistRoom=S.artistRoom||{};
+let mbChain=Promise.resolve();
+function mbInfo(name){
+  const key=norm(name);if(!key)return Promise.resolve({tags:[],country:""});
+  if(S.mb[key])return Promise.resolve(S.mb[key]);
+  const job=mbChain.then(async()=>{
+    if(S.mb[key])return S.mb[key];
+    try{
+      const r=await fetch(`https://musicbrainz.org/ws/2/artist?query=${enc('artist:"'+name+'"')}&limit=5&fmt=json`,{headers:{Accept:"application/json"}});
+      if(!r.ok)throw new Error("mb "+r.status);
+      const d=await r.json(),as=d.artists||[];
+      const a=as.find(x=>norm(x.name)===key&&(x.score||0)>=80)||as.find(x=>(x.score||0)>=97);
+      const out={tags:(a?.tags||[]).sort((x,y)=>(y.count||0)-(x.count||0)).map(x=>String(x.name).toLowerCase()),country:a?.country||a?.area?.["iso-3166-1-codes"]?.[0]||(a?.area?.name==="India"?"IN":"")};
+      S.mb[key]=out;save();return out;
+    }catch(e){return {tags:[],country:""}}
+  });
+  mbChain=job.then(()=>sleepMs(1100)); // MusicBrainz allows about one request a second
+  return job;
+}
+const titleCase=s=>s.replace(/\b\w/g,c=>c.toUpperCase());
+function bucket(gs,indian){
+  gs=gs.map(g=>String(g).toLowerCase());
+  const has=re=>gs.some(g=>re.test(g));
+  if(indian||has(/\bindian\b|hindi|desi|bollywood|filmi|haryanvi|punjabi/)){
+    if(has(/haryanvi/))return "Haryanvi";
+    if(has(/punjabi|bhangra/))return "Punjabi";
+    if(has(/hip hop|hip-hop|rap|trap|drill|gully/))return "Desi Hip-Hop";
+    if(has(/sufi|qawwali|ghazal/))return "Sufi & Ghazal";
+    if(has(/carnatic|hindustani|classical/))return "Indian Classical";
+    if(has(/devotional|bhajan|kirtan|bhakti/))return "Devotional";
+    if(has(/filmi|bollywood|soundtrack|film|playback/))return "Bollywood";
+    if(has(/indie|singer-songwriter|folk|rock|acoustic|alternative/))return "Indian Indie";
+    if(has(/pop/))return "Bollywood";
+    return null;
+  }
+  for(const [re,n] of BUCKETS)if(has(re))return n;
+  return null;
+}
+function scriptHint(t){
+  const s=t.title+" "+(t.album||"");
+  if(/[਀-੿]/.test(s))return "Punjabi";
+  if(/[ऀ-ॿ]/.test(s))return "Bollywood";
+  return null;
+}
+// Returns the playlist name, or null when Ghost can't tell (then it asks you once per artist).
 async function findGenre(t){
-  if(t.genre&&t.genre!=="…")return t.genre;
   if(!t.artistId)await ensureSp(t);
-  return bucket(await artistGenres(t.artistId));
+  if(t.artistId&&S.artistRoom[t.artistId])return S.artistRoom[t.artistId];
+  const first=String(t.artist||"").split(",")[0].trim();
+  const [sp,mb]=await Promise.all([artistGenres(t.artistId),mbInfo(first)]);
+  const indian=mb.country==="IN"||/[ऀ-ॿ਀-੿]/.test(t.title+(t.album||""));
+  return bucket(sp.concat(mb.tags),indian)||scriptHint(t)||(sp[0]?titleCase(sp[0]):null);
 }
 // Similar: Spotify no longer gives new apps "related artists" or "recommendations",
 // so Ghost searches Spotify by the artist's own genres and mixes the results.
 async function similarTo(t,round=0){
   if(!t.artistId)await ensureSp(t);
-  const gs=await artistGenres(t.artistId);
+  let gs=await artistGenres(t.artistId);
+  if(!gs.length)gs=(await mbInfo(String(t.artist||"").split(",")[0].trim())).tags.filter(g=>!/^(indian|india|hindi|english|male vocalists?|female vocalists?|seen live|\d+s)$/.test(g)).slice(0,3);
   const out=[],seenT=new Set([norm(t.title)]),perArtist={};
   const push=x=>{const k=norm(x.title),a=x.artistId||x.artist;if(seenT.has(k))return;if((perArtist[a]||0)>=(a===t.artistId?1:2))return;seenT.add(k);perArtist[a]=(perArtist[a]||0)+1;out.push(x)};
   if(gs.length){
@@ -586,11 +648,60 @@ async function similarTo(t,round=0){
 async function toggleStar(id){
   const t=T.get(id);if(!t)return;
   if(S.stars[id]){const room=roomOf(S.stars[id]);delete S.stars[id];save();toast("Removed from "+room);refreshStars();return}
-  S.stars[id]=Object.assign(slim(t),{addedAt:Date.now(),genre:t.genre||"…"});save();refreshStars();
-  const g=await findGenre(t);t.genre=g;
-  if(S.stars[id]){S.stars[id].genre=g;Object.assign(S.stars[id],{uri:t.uri,artistId:t.artistId});save();toast("★ Added to "+roomOf(S.stars[id]))}
+  S.stars[id]=Object.assign(slim(t),{addedAt:Date.now(),genre:"…"});save();refreshStars();
+  toast("★ Starred · finding its playlist…");
+  let g=null;try{g=await findGenre(t)}catch(e){}
+  if(!S.stars[id])return;
+  Object.assign(S.stars[id],{uri:t.uri,artistId:t.artistId});
+  if(g){t.genre=g;S.stars[id].genre=g;save();toast("★ Added to "+roomOf(S.stars[id]))}
+  else{S.stars[id].genre="Unsorted";save();askRoom([id])}
   refreshStars();
 }
+const needsSort=s=>!s.playlist&&(!s.genre||s.genre==="…"||s.genre==="Unsorted"||s.genre==="Uncategorised");
+// Sort songs that are stuck in Unsorted. quiet: don't ask about the ones Ghost can't place.
+let sorting=false;
+async function sortUnsorted(quiet){
+  if(sorting||!connected())return;sorting=true;
+  const ids=Object.keys(S.stars).filter(id=>needsSort(S.stars[id]));
+  const left=[];let done=0;
+  for(const id of ids){
+    const s=S.stars[id];if(!s)continue;const t=T.get(id)||s;
+    let g=null;try{g=await findGenre(t)}catch(e){}
+    if(!S.stars[id])continue;
+    S.stars[id].artistId=t.artistId||S.stars[id].artistId;S.stars[id].uri=t.uri||S.stars[id].uri;
+    if(g){S.stars[id].genre=g;t.genre=g;done++}else{S.stars[id].genre="Unsorted";left.push(id)}
+    save();if(view==="library"&&!openRoom)render();
+  }
+  sorting=false;refreshStars();
+  if(!quiet){if(done)toast(`Sorted ${done} song${done>1?"s":""}`);if(left.length)askRoom(left);else if(!done&&ids.length)toast("Nothing left to sort")}
+}
+
+/* ============ playlist picker (when Ghost can't tell the genre) ============ */
+const COMMON_ROOMS=["Bollywood","Punjabi","Haryanvi","Desi Hip-Hop","Indian Indie","Sufi & Ghazal","Devotional","Pop","Hip-Hop","R&B & Soul","Rock","Electronic","Lo-fi & Chill","Classical & Score"];
+let askQ=[];
+function askRoom(ids){askQ=askQ.concat(ids.filter(id=>!askQ.includes(id)));if($("#picker").hidden)showAsk()}
+function showAsk(){
+  while(askQ.length&&(!S.stars[askQ[0]]||!needsSort(S.stars[askQ[0]])))askQ.shift();
+  const id=askQ[0];if(!id){$("#picker").hidden=true;return}
+  const s=S.stars[id];
+  $("#pkArt").style.backgroundImage=`url('${s.art}')`;$("#pkT").textContent=s.title;$("#pkA").textContent=s.artist;
+  $("#pkCount").textContent=askQ.length>1?`1 of ${askQ.length}`:"";
+  const names=[...new Set(roomNames().filter(n=>n!=="Unsorted"&&n!=="…").concat(COMMON_ROOMS))];
+  $("#pkChips").innerHTML=names.map(n=>`<button class="chip" data-pick="${esc(n)}">${esc(n)}</button>`).join("");
+  $("#pkNew").value="";$("#picker").hidden=false;
+}
+function pickRoom(name){
+  const id=askQ.shift();const s=S.stars[id];
+  if(s&&name){s.genre=name;s.playlist=undefined;if(s.artistId)S.artistRoom[s.artistId]=name;const t=T.get(id);if(t)t.genre=name;save();
+    const first=String(s.artist).split(",")[0];toast(`Added to ${name} · more ${first} songs will go there too`);
+    // put this artist's other unsorted stars in the same place
+    Object.values(S.stars).forEach(o=>{if(o.artistId&&o.artistId===s.artistId&&needsSort(o))o.genre=name});save();}
+  refreshStars();showAsk();
+}
+$("#pkChips").addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b)pickRoom(b.dataset.pick)});
+$("#pkNewBtn").onclick=()=>{const v=$("#pkNew").value.trim();if(v)pickRoom(v);else $("#pkNew").focus()};
+$("#pkNew").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#pkNewBtn").click()}});
+$("#pkSkip").onclick=()=>{askQ.shift();showAsk()};
 function refreshStars(){
   document.querySelectorAll("[data-star]").forEach(b=>b.setAttribute("aria-pressed",!!S.stars[b.dataset.star]));
   const cur=Q.list[Q.i];
@@ -659,7 +770,9 @@ function render(){
     }
     openRoom=null;
     if(!all.length){M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2></div></div><div class="empty">Star a song from search and a playlist for its genre appears here on its own.</div>${ioRow()}`;return}
-    M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2><p class="sub">Sorted automatically by genre. Move any song with the menu inside a playlist.</p></div></div>
+    const unsorted=all.filter(needsSort).length;
+    M.innerHTML=`<div class="sec-head"><div><h2>Your playlists</h2><p class="sub">Sorted automatically by genre. Move any song with the menu inside a playlist, and Ghost remembers that artist's place.</p></div></div>
+      ${unsorted?`<div class="connect" style="max-width:none;margin-bottom:24px;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:16px 18px"><p style="color:var(--fog)"><b>${unsorted} song${unsorted>1?"s are":" is"} still unsorted.</b> <span style="color:var(--mist)">Ghost will try again, and ask you about any it can't place.</span></p><button class="btn primary" data-act="sortnow"${sorting?" disabled":""}>${sorting?"Sorting…":"Sort them"}</button></div>`:""}
       <div class="stats"><div class="stat"><span class="label">Starred</span><b>${all.length}</b></div><div class="stat"><span class="label">Playlists</span><b>${names.length}</b></div><div class="stat"><span class="label">Your sound</span><b style="font-family:var(--display);font-size:22px">${esc(names[0])}</b></div></div>
       <div class="grid">
         <button class="pcard" data-room="★ All starred">${mosaic(all)}<div><div class="pn">★ All starred</div><div class="pc">${all.length} songs</div></div></button>
@@ -939,6 +1052,7 @@ document.addEventListener("click",e=>{
   else if(a==="similar"&&row)openSimilar(row.dataset.id);
   else if(a==="back"){openRoom=null;render()}
   else if(a==="settings")openSettings();
+  else if(a==="sortnow"){if(!connected()){openSettings();return}sortUnsorted(false);render()}
   else if(a==="retry")runSearch($("#q").value||lastQuery);
   else if(a==="more"){act.disabled=true;act.textContent="Loading…";searchSongs(lastQuery,moreOffset,1).then(r=>{moreOffset+=10;const ids=new Set(lastResults.map(x=>x.id));lastResults=lastResults.concat(r.filter(x=>!ids.has(x.id)));if(!r.length)moreOffset=999;render()}).catch(()=>{act.disabled=false;act.textContent="More results";toast("Couldn't load more")})}
   else if(a==="clearRecent"){S.recent=[];save();render()}
@@ -953,9 +1067,9 @@ document.addEventListener("change",e=>{
   const sel=e.target.closest("[data-move]");if(!sel)return;
   const id=sel.dataset.move;const name=sel.value;
   if(name==="+ New playlist…"){sel.hidden=true;const inp=document.createElement("input");inp.className="movesel";inp.placeholder="Playlist name";sel.after(inp);inp.focus();
-    let done=false;const fin=()=>{if(done)return;done=true;const v=inp.value.trim();if(v&&S.stars[id]){S.stars[id].playlist=v;save();toast("Moved to "+v)}render()};
+    let done=false;const fin=()=>{if(done)return;done=true;const v=inp.value.trim();if(v&&S.stars[id]){const s=S.stars[id];s.playlist=undefined;s.genre=v;if(s.artistId)S.artistRoom[s.artistId]=v;save();toast("Moved to "+v)}render()};
     inp.addEventListener("keydown",k=>{if(k.key==="Enter")fin();if(k.key==="Escape"){done=true;render()}});inp.addEventListener("blur",fin);return}
-  if(S.stars[id]){S.stars[id].playlist=name===S.stars[id].genre?undefined:name;save();toast("Moved to "+name);render()}
+  if(S.stars[id]){const s=S.stars[id];s.playlist=undefined;s.genre=name;if(s.artistId)S.artistRoom[s.artistId]=name;save();toast("Moved to "+name+" · new stars by this artist go there too");render()}
 });
 $("#importFile").addEventListener("change",async e=>{
   const f=e.target.files[0];if(!f)return;
@@ -969,6 +1083,7 @@ document.addEventListener("keydown",e=>{
   if(!$("#cover").classList.contains("gone")){enter();return}
   const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if(e.key==="Escape"){if(!$("#settings").hidden){closeSettings();return}if($("#drawer").classList.contains("open")){closeDrawer();return}if($("#np").classList.contains("open")){closeNP();return}if(typing)document.activeElement.blur();return}
+  if(!$("#picker").hidden){if(e.key==="Escape")$("#pkSkip").click();return}
   if(typing||!$("#settings").hidden)return;
   if(e.key==="/"){e.preventDefault();closeNP();$("#q").focus()}
   else if(e.key===" "){e.preventDefault();toggle()}
@@ -1012,6 +1127,7 @@ $("#installClose").onclick=()=>{$("#install").hidden=true;try{localStorage.setIt
   paintGear();
   go(location.hash.slice(1)||"search");
   if(connected()&&wantMode()==="web")loadSdk();
+  if(connected())setTimeout(()=>sortUnsorted(true),1500); // quietly fix songs left in Unsorted earlier
   if(connected()&&wantMode()==="app"){ // pick up whatever your Spotify app is already playing
     try{const d=await api("/me/player");if(d&&d.item){curMode="app";curDevName=d.device?.name||"Spotify";paintDev();onState({paused:!d.is_playing,pos:d.progress_ms,dur:d.item.duration_ms,uri:d.item.uri,item:d.item});startPoll()}}catch(e){}
   }
