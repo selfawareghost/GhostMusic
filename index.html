@@ -408,6 +408,12 @@ body.np-open #toast{bottom:calc(env(safe-area-inset-bottom,0px) + 24px)}
         <input id="pasteCode" type="text" placeholder="Paste a login code here" autocomplete="off" spellcheck="false" autocapitalize="off">
         <div class="btn-row"><button class="btn" id="useCode" type="button">Use code</button></div>
       </details>
+      <details class="move">
+        <summary>Check the genre sources</summary>
+        <p>If songs aren't sorting the way you expect, run this and send a screenshot. It looks up one song in every genre source.</p>
+        <div class="btn-row"><button class="btn" id="testSort" type="button">Run check</button></div>
+        <pre id="testOut" class="mono" style="margin:0;font-size:12px;white-space:pre-wrap;color:var(--fog)"></pre>
+      </details>
       <div class="btn-row"><button class="btn" id="logoutBtn">Disconnect Spotify</button></div>
     </div>
   </div>
@@ -564,7 +570,7 @@ const BUCKETS=[[/filmi|bollywood|hindi film|tollywood|kollywood|mollywood|sandal
   [/devotional|bhajan|kirtan|bhakti/,"Devotional"],[/indian indie|hindi indie|desi indie|indian singer|indian rock|indian pop/,"Indian Indie"],[/k-pop|korean/,"K-Pop"],
   [/lo-?fi|chill/,"Lo-fi & Chill"],[/hip hop|rap|trap|drill/,"Hip-Hop"],[/r&b|soul/,"R&B & Soul"],[/metal|rock|grunge|punk|shoegaze/,"Rock"],
   [/edm|house|techno|electro|dance|dubstep|trance|drum and bass/,"Electronic"],[/jazz|blues/,"Jazz & Blues"],[/soundtrack|score|orchestra|classical|ambient/,"Classical & Score"],
-  [/latin|reggaeton/,"Latin"],[/country/,"Country"],[/indie|folk|singer-songwriter/,"Indie & Folk"],[/pop/,"Pop"]];
+  [/latin|reggaeton/,"Latin"],[/country/,"Country"],[/indie|folk|singer-songwriter|alternative|acoustic/,"Indie & Folk"],[/pop/,"Pop"]];
 // Spotify has emptied the genre list for many artists, so Ghost also asks MusicBrainz
 // (a free, open music encyclopedia) for the artist's genre tags and home country.
 S.mb=S.mb||{};S.artistRoom=S.artistRoom||{};
@@ -611,14 +617,92 @@ function scriptHint(t){
   if(/[ऀ-ॿ]/.test(s))return "Bollywood";
   return null;
 }
-// Returns the playlist name, or null when Ghost can't tell (then it asks you once per artist).
-async function findGenre(t){
-  if(!t.artistId)await ensureSp(t);
-  if(t.artistId&&S.artistRoom[t.artistId])return S.artistRoom[t.artistId];
-  const first=String(t.artist||"").split(",")[0].trim();
-  const [sp,mb]=await Promise.all([artistGenres(t.artistId),mbInfo(first)]);
-  const indian=mb.country==="IN"||/[ऀ-ॿ਀-੿]/.test(t.title+(t.album||""));
-  return bucket(sp.concat(mb.tags),indian)||scriptHint(t)||(sp[0]?titleCase(sp[0]):null);
+/* ---- extra genre sources (used only to read the genre label — nothing plays from them) ---- */
+let jpN=0;
+function jsonp(url,ms=7000){
+  return new Promise((res,rej)=>{
+    const cb="__gh"+Date.now()+"_"+(++jpN),s=document.createElement("script");
+    const done=()=>{clearTimeout(t);try{delete window[cb]}catch(e){window[cb]=undefined}s.remove()};
+    const t=setTimeout(()=>{done();rej(new Error("no answer"))},ms);
+    window[cb]=d=>{done();res(d)};
+    s.onerror=()=>{done();rej(new Error("blocked"))};
+    s.src=url+(url.includes("?")?"&":"?")+"callback="+cb;document.head.appendChild(s);
+  });
+}
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("no answer")),ms))]);
+const firstArtist=t=>String(t.artist||"").split(/,| & | x | feat\.? /i)[0].trim();
+// Apple's catalogue labels each song with a genre (Bollywood, Punjabi Pop, Devotional & Spiritual…)
+async function appleGenre(t){
+  const d=await jsonp(`https://itunes.apple.com/search?term=${enc(t.title.replace(/\(.*?\)|\[.*?\]/g,"")+" "+firstArtist(t))}&media=music&entity=song&limit=8&country=IN`);
+  const rs=(d.results||[]).filter(r=>r.kind==="song");
+  const fa=norm(firstArtist(t)).split(" ")[0];
+  const hit=rs.find(r=>norm(r.artistName).includes(fa)&&norm(r.trackName).startsWith(norm(t.title).split(" ").slice(0,2).join(" ")))||rs.find(r=>norm(r.artistName).includes(fa));
+  return hit?.primaryGenreName||null;
+}
+// Deezer labels each album with genres
+async function deezerGenre(t){
+  const d=await jsonp(`https://api.deezer.com/search?q=${enc(`artist:"${firstArtist(t)}" track:"${t.title.replace(/\(.*?\)|\[.*?\]/g,"").trim()}"`)}&limit=3&output=jsonp`);
+  const tr=(d.data||[])[0];if(!tr?.album?.id)return null;
+  const al=await jsonp(`https://api.deezer.com/album/${tr.album.id}?output=jsonp`);
+  return (al.genres?.data||[]).map(g=>g.name);
+}
+function mapLabel(l,indian){
+  if(!l)return null;const s=String(l).toLowerCase();
+  if(/bollywood|filmi/.test(s))return "Bollywood";
+  if(/haryanvi/.test(s))return "Haryanvi";
+  if(/punjabi|bhangra/.test(s))return "Punjabi";
+  if(/devotional|spiritual|bhajan/.test(s))return "Devotional";
+  if(/sufi|ghazal|qawwali/.test(s))return "Sufi & Ghazal";
+  if(/carnatic|hindustani|indian classical/.test(s))return "Indian Classical";
+  if(/tamil|telugu|kannada|malayalam|marathi|bengali|gujarati|bhojpuri|regional indian/.test(s))return "Regional Indian";
+  if(/indian pop|indian music|hindi/.test(s))return indian===false?"Pop":"Bollywood";
+  return bucket([s],indian)||null;
+}
+// Built-in list so popular artists always sort, even when no source answers
+const KNOWN={
+  "Bollywood":"arijit singh|shreya ghoshal|atif aslam|sonu nigam|kk|shaan|sunidhi chauhan|neha kakkar|jubin nautiyal|armaan malik|vishal-shekhar|pritam|a. r. rahman|a.r. rahman|ar rahman|amit trivedi|shankar-ehsaan-loy|shankar mahadevan|mohit chauhan|kishore kumar|lata mangeshkar|mohammed rafi|mohammad rafi|asha bhosle|alka yagnik|kumar sanu|udit narayan|sachet tandon|parampara tandon|sachet-parampara|b praak|darshan raval|vishal mishra|tanishk bagchi|javed ali|sukhwinder singh|mithoon|ankit tiwari|palak muchhal|sachin-jigar|shilpa rao|papon|salim-sulaiman|himesh reshammiya|monali thakur|asees kaur|stebin ben|amaal mallik|tulsi kumar|dhvani bhanushali|mika singh|benny dayal|shekhar ravjiani|vishal dadlani|neeti mohan|jonita gandhi|nikhita gandhi|raghav chaitanya|anirudh ravichander|shankar-jaikishan|r. d. burman|rd burman|s. d. burman|laxmikant-pyarelal|kalyanji-anandji|lucky ali|k. s. chithra|hariharan|sadhana sargam|kavita krishnamurthy|abhijeet|babul supriyo|altamash faridi|yasser desai|harshdeep kaur|sukriti kakar|akhil sachdeva|payal dev|mohammed irfan|arko|rochak kohli|tony kakkar|ash king",
+  "Punjabi":"diljit dosanjh|sidhu moose wala|ap dhillon|karan aujla|shubh|guru randhawa|harrdy sandhu|ammy virk|gurdas maan|jass manak|babbu maan|imran khan|gippy grewal|parmish verma|jasmine sandlas|sunanda sharma|arjan dhillon|garry sandhu|yo yo honey singh|honey singh|amrit maan|tegi pannu|gurinder gill|jordan sandhu|nimrat khaira|r nait|prem dhillon|cheema y|sukh-e|mankirt aulakh|jassie gill|ninja|kaka|the prophec|talwiinder|surjit bindrakhia|kulwinder billa|sharry mann|hardy sandhu|gur sidhu|nirvair pannu|veer davinder|sultaan|b jay randhawa|afsana khan|miss pooja|jazzy b|malkit singh|daler mehndi|sukhbir|bohemia",
+  "Haryanvi":"masoom sharma|sapna choudhary|raju punjabi|gulzaar chhaniwala|ndee kundu|khasa aala chahar|renuka panwar|md desi rockstar|amanraj gill|sumit goswami|ak jatti|dhanda nyoliwala|vinu gaur|sandeep surila|diler kharkiya|kanchan nagar|ruchika jangid|harjeet deewana|raj mawar|fazilpuria|surender romio|vijay varma|kd desi rock|anjali raghav|pranjal dahiya|mohit sharma|ajay hooda|sonika singh|tr panchal|uk haryanvi|biru kataria|vishvajeet choudhary|rahul puthi|shiva choudhary|kaka saab",
+  "Desi Hip-Hop":"divine|raftaar|emiway bantai|kr$na|krsna|seedhe maut|mc stan|naezy|king|ikka|karma|hanumankind|dino james|bharg|paradox|brodha v|fotty seven|mc altaf|encore abj|yungsta|prabh deep|raga|badshah|talha anjum|young stunners|chaar diwaari|sez on the beat|vijay dk|kr$na|panther|spitfire|loka|ahmer|bella|dhanji|rawal|kaam bhaari",
+  "Indian Indie":"prateek kuhad|anuv jain|ritviz|the local train|lifafa|when chai met toast|osho jain|aditya rikhari|zaeden|taba chake|the yellow diary|bayaan|nikhil d'souza|kavya trehan|sanjeeta bhattacharya|vilen|jasleen royal|raghu dixit|indian ocean|euphoria|parikrama|aur|hasan raheem|kayan|anumita nadesan|shashwat sachdev|sanah moidutty|dhruv visvanath|tanmaya bhatnagar|lagori|peter cat recording co.|easy wanderlings|kamakshi khanna|nikhil d’souza|faheem abdullah|abdul hannan|kaavish|ali sethi|kanishk seth|the jasmine|pho|samar mehdi",
+  "Sufi & Ghazal":"nusrat fateh ali khan|rahat fateh ali khan|abida parveen|jagjit singh|ghulam ali|mehdi hassan|kailash kher|wadali brothers|sabri brothers|satinder sartaaj|pankaj udhas|farida khanum|chitra singh|talat aziz|hans raj hans|nooran sisters|kavita seth|harshdeep kaur|zeeshan ali",
+  "Devotional":"anuradha paudwal|gulshan kumar|jaya kishori|hansraj raghuwanshi|lakhbir singh lakkha|anup jalota|hari om sharan|krishna das|jagjit singh & chitra singh|narendra chanchal|sachdev|ravindra jain|suresh wadkar|deva premal|art of living|iskcon",
+  "Hip-Hop":"drake|kendrick lamar|eminem|travis scott|kanye west|j. cole|future|21 savage|lil baby|post malone|tyler, the creator|a$ap rocky|nicki minaj|cardi b|jay-z|2pac|50 cent|snoop dogg|lil wayne|metro boomin|playboi carti|central cee|dave|stormzy|juice wrld|xxxtentacion|mac miller|don toliver|gunna|lil uzi vert",
+  "R&B & Soul":"the weeknd|sza|frank ocean|daniel caesar|giveon|h.e.r.|brent faiyaz|khalid|usher|beyoncé|beyonce|chris brown|rihanna|alicia keys|john legend|summer walker|jhené aiko|bryson tiller|6lack|steve lacy|miguel|the neighbourhood",
+  "Pop":"taylor swift|ed sheeran|dua lipa|ariana grande|billie eilish|justin bieber|harry styles|olivia rodrigo|bruno mars|sabrina carpenter|charlie puth|selena gomez|shawn mendes|lady gaga|katy perry|sia|camila cabello|adele|sam smith|lewis capaldi|doja cat|lana del rey|zayn|one direction|niall horan|tate mcrae|benson boone|chappell roan|gracie abrams|conan gray|lauv|jvke|alec benjamin|troye sivan|halsey|rosé|jungkook|james arthur|calum scott|ellie goulding|maroon 5|the chainsmokers|ava max|bebe rexha|tones and i|stephen sanchez",
+  "Rock":"coldplay|imagine dragons|arctic monkeys|linkin park|queen|nirvana|onerepublic|radiohead|the beatles|pink floyd|led zeppelin|ac/dc|guns n' roses|metallica|green day|the killers|foo fighters|red hot chili peppers|twenty one pilots|fall out boy|panic! at the disco|paramore|my chemical romance|the 1975|the strokes|kings of leon|muse|u2|bon jovi|eagles|fleetwood mac|the rolling stones|oasis|keane|the script|snow patrol|bring me the horizon|måneskin|maneskin|glass animals|cage the elephant|the smiths|deftones|system of a down|evanescence",
+  "Electronic":"avicii|martin garrix|calvin harris|alan walker|marshmello|david guetta|kygo|zedd|skrillex|tiësto|tiesto|swedish house mafia|disclosure|odesza|porter robinson|madeon|daft punk|fred again..|illenium|deadmau5|kshmr|nucleya|anyma|fisher|john summit|peggy gou|flume|rüfüs du sol|rufus du sol|the weeknd x|major lazer|dj snake|alesso|hardwell|armin van buuren|lost frequencies|sammy virji",
+  "K-Pop":"bts|blackpink|stray kids|newjeans|twice|seventeen|exo|aespa|le sserafim|ive|txt|enhypen|itzy|red velvet|nct 127|nct dream|ateez|big bang|got7|(g)i-dle|jimin|v|jennie|lisa|jisoo|babymonster|illit|riize|boynextdoor|zerobaseone",
+  "Classical & Score":"hans zimmer|ludovico einaudi|john williams|ennio morricone|max richter|yiruma|joe hisaishi|ólafur arnalds|olafur arnalds|ramin djawadi|howard shore|alan silvestri|ludwig van beethoven|wolfgang amadeus mozart|johann sebastian bach|frédéric chopin|frederic chopin|claude debussy|erik satie|pyotr ilyich tchaikovsky|antonio vivaldi|nils frahm|philip glass|michael giacchino|justin hurwitz|ludwig göransson|ludwig goransson|hildur guðnadóttir|thomas newman|james horner|clint mansell",
+  "Indie & Folk":"bon iver|hozier|lord huron|cigarettes after sex|the lumineers|mumford & sons|of monsters and men|vance joy|phoebe bridgers|mitski|boygenius|novo amor|ben howard|fleet foxes|iron & wine|sufjan stevens|the paper kites|gregory alan isakov|noah kahan|zach bryan|mt. joy|gigi perez|the national|arlo parks|laufey|clairo|beabadoobee|wallows|mac demarco|tame impala|still woozy|rex orange county|joji|djo|boy pablo|men i trust|dayglow|hippo campus|cavetown|girl in red|sombr",
+  "Lo-fi & Chill":"lofi girl|chillhop music|nujabes|idealism|jinsang|tomppabeats|potsu|kudasai|in love with a ghost|j'san|aso|kupla|purrple cat",
+  "Latin":"bad bunny|j balvin|shakira|karol g|daddy yankee|ozuna|rosalía|rosalia|peso pluma|feid|rauw alejandro|maluma|luis fonsi|anuel aa|myke towers|enrique iglesias|camilo|sebastián yatra|becky g|marc anthony"
+};
+const KNOWN_MAP=(()=>{const m={};for(const [room,list] of Object.entries(KNOWN))list.split("|").forEach(n=>{const k=norm(n);if(k&&!m[k])m[k]=room});return m})();
+function knownRoom(t){
+  const names=String(t.artist||"").split(/,| & | x | feat\.? /i).map(s=>norm(s)).filter(Boolean);
+  for(const n of names)if(KNOWN_MAP[n])return KNOWN_MAP[n];
+  return null;
+}
+const indianHints=t=>/[ऀ-ॿ਀-੿]/.test(t.title+" "+(t.album||""))||/\(from\s+["“'][^)]*["”']\)/i.test(t.title+" "+(t.album||""));
+
+// Works out a playlist for a song. Always returns a name: your own choice for that artist first,
+// then the built-in list, then genre labels from Apple, Deezer, Spotify and MusicBrainz, then a best guess.
+const diag={};
+async function findGenre(t,test){
+  if(!t.artistId&&!t.uri)await ensureSp(t);
+  if(!test){if(t.artistId&&S.artistRoom[t.artistId])return S.artistRoom[t.artistId];
+  const known=knownRoom(t);if(known)return known;}
+  const first=firstArtist(t),wrap=(name,p)=>withTimeout(p,8000).then(v=>{diag[name]=v&&(v.length!==0)?String(v):"no genre";return v},e=>{diag[name]="failed: "+e.message;return null});
+  const [ap,dz,sp,mb]=await Promise.all([
+    wrap("Apple",appleGenre(t)),wrap("Deezer",deezerGenre(t)),
+    wrap("Spotify",t.artistId?artistGenres(t.artistId):Promise.resolve([])),wrap("MusicBrainz",mbInfo(first).then(m=>{diag.mbCountry=m.country;return m.tags}))]);
+  const indian=diag.mbCountry==="IN"||indianHints(t)||/indian|bollywood|punjabi|hindi|haryanvi|desi|filmi/i.test([ap].concat(dz||[],sp||[]).join(" "))?true:undefined;
+  return mapLabel(ap,indian)
+    ||(dz&&dz.length?mapLabel(dz.find(g=>!/^(pop|all)$/i.test(g))||dz[0],indian):null)
+    ||bucket((sp||[]).concat(mb||[]),indian)
+    ||(sp&&sp[0]?titleCase(sp[0]):null)
+    ||(indian?"Bollywood":"Pop");
 }
 // Similar: Spotify no longer gives new apps "related artists" or "recommendations",
 // so Ghost searches Spotify by the artist's own genres and mixes the results.
@@ -654,7 +738,7 @@ async function toggleStar(id){
   if(!S.stars[id])return;
   Object.assign(S.stars[id],{uri:t.uri,artistId:t.artistId});
   if(g){t.genre=g;S.stars[id].genre=g;save();toast("★ Added to "+roomOf(S.stars[id]))}
-  else{S.stars[id].genre="Unsorted";save();askRoom([id])}
+  else{S.stars[id].genre=indianHints(t)?"Bollywood":"Pop";save();toast("★ Added to "+roomOf(S.stars[id]))}
   refreshStars();
 }
 const needsSort=s=>!s.playlist&&(!s.genre||s.genre==="…"||s.genre==="Unsorted"||s.genre==="Uncategorised");
@@ -673,7 +757,7 @@ async function sortUnsorted(quiet){
     save();if(view==="library"&&!openRoom)render();
   }
   sorting=false;refreshStars();
-  if(!quiet){if(done)toast(`Sorted ${done} song${done>1?"s":""}`);if(left.length)askRoom(left);else if(!done&&ids.length)toast("Nothing left to sort")}
+  if(!quiet){if(done)toast(`Sorted ${done} song${done>1?"s":""}`);else if(ids.length)toast("Nothing left to sort")}
 }
 
 /* ============ playlist picker (when Ghost can't tell the genre) ============ */
@@ -1029,6 +1113,13 @@ $("#connectBtn").onclick=()=>{
   const c=$("#cid").value.trim();
   if(!/^[0-9a-f]{32}$/i.test(c)){setMsg("bad","That doesn't look like a Client ID. It's 32 letters and numbers, found in your Spotify app's Settings.");return}
   SP.cid=c;saveSP();setMsg("","Opening Spotify…");login();
+};
+$("#testSort").onclick=async()=>{
+  const cur=Q.list[Q.i];const t=cur?Object.assign({},cur):{title:"Kesariya",artist:"Arijit Singh",album:"Brahmastra"};
+  $("#testOut").textContent="Checking “"+t.title+"” by "+t.artist+"…";
+  for(const k in diag)delete diag[k];
+  const g=await findGenre(t,true);
+  $("#testOut").textContent=`Song: ${t.title} — ${t.artist}\nApple: ${diag.Apple}\nDeezer: ${diag.Deezer}\nSpotify: ${diag.Spotify}\nMusicBrainz: ${diag.MusicBrainz}${diag.mbCountry?" ("+diag.mbCountry+")":""}\nBuilt-in list: ${knownRoom(t)||"not listed"}\n→ Goes to: ${knownRoom(t)||g}`;
 };
 $("#logoutBtn").onclick=()=>{try{player&&player.disconnect()}catch(e){}SP={cid:SP.cid,access:"",refresh:"",exp:0,name:""};saveSP();curMode=null;paintDev();paintSettings();paintGear();setMsg("","Disconnected. Your stars and playlists are still here.")};
 $("#playOn").addEventListener("change",e=>{S.playOn=e.target.value;save();setMsg("ok","Saved. Your next song plays "+(wantMode()==="web"?"inside Ghost.":"in your Spotify app."))});
